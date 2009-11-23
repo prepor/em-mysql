@@ -50,38 +50,42 @@ raise 'need Sequel >= 3.2.0' unless Sequel::MAJOR == 3 and Sequel::MINOR >= 2
 
 module Sequel
   class Dataset
+    def em_mysq
+      EventedMysql.databases[db] || EventedMysql
+    end
+    
     def async_insert *args, &cb
-      EventedMysql.insert insert_sql(*args), &cb
+      em_mysq.insert insert_sql(*args), &cb
       nil
     end
 
     def async_insert_ignore *args, &cb
-      EventedMysql.insert insert_ignore.insert_sql(*args), &cb
+      em_mysq.insert insert_ignore.insert_sql(*args), &cb
       nil
     end
 
     def async_update *args, &cb
-      EventedMysql.update update_sql(*args), &cb
+      em_mysq.update update_sql(*args), &cb
       nil
     end
 
     def async_delete &cb
-      EventedMysql.execute delete_sql, &cb
+      em_mysq.execute delete_sql, &cb
       nil
     end
 
     def async_multi_insert *args, &cb
-      EventedMysql.execute multi_insert_sql(*args).first, &cb
+      em_mysq.execute multi_insert_sql(*args).first, &cb
       nil
     end
 
     def async_multi_insert_ignore *args, &cb
-      EventedMysql.execute insert_ignore.multi_insert_sql(*args).first, &cb
+      em_mysq.execute insert_ignore.multi_insert_sql(*args).first, &cb
       nil
     end
 
     def async_fetch_rows sql, iter = :each
-      EventedMysql.raw(sql) do |m|
+      em_mysq.raw(sql) do |m|
         r = m.result
 
         i = -1

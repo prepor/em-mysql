@@ -248,12 +248,16 @@ class EventedMysql < EM::Connection
   end
 end
 
-class EventedMysql
-  def self.settings
+class EmMysql
+  def initialize(settings = {})
+    @settings = settings
+  end
+  
+  def settings
     @settings ||= { :connections => 4, :logging => false }
   end
 
-  def self.execute query, type = nil, cblk = nil, eblk = nil, &blk
+  def execute query, type = nil, cblk = nil, eblk = nil, &blk
     unless nil#connection = connection_pool.find{|c| not c.processing and c.connected }
       @n ||= 0
       connection = connection_pool[@n]
@@ -265,13 +269,13 @@ class EventedMysql
 
   %w[ select insert update raw ].each do |type| class_eval %[
 
-    def self.#{type} query, cblk = nil, eblk = nil, &blk
+    def #{type} query, cblk = nil, eblk = nil, &blk
       execute query, :#{type}, cblk, eblk, &blk
     end
 
   ] end
 
-  def self.all query, type = nil, &blk
+  def all query, type = nil, &blk
     responses = 0
     connection_pool.each do |c|
       c.execute(query, type) do
@@ -281,7 +285,7 @@ class EventedMysql
     end
   end
 
-  def self.connection_pool
+  def connection_pool
     @connection_pool ||= (1..settings[:connections]).map{ EventedMysql.connect(settings) }
     # p ['connpool', settings[:connections], @connection_pool.size]
     # (1..(settings[:connections]-@connection_pool.size)).each do
@@ -289,6 +293,23 @@ class EventedMysql
     # end unless settings[:connections] == @connection_pool.size
     # @connection_pool
   end
+end
+
+class EventedMysql
+  @@proxy_object = EmMysql.new
+    
+  def self.databases
+     @@databases ||= {}
+  end
+  
+  [:settings, :connection_pool].each do |name|
+    class_eval "def self.#{name}(*args) @@proxy_object.send(:#{name}, *args); end"
+  end
+  
+  [:execute, :connection_pool, :select, :insert, :update, :raw].each do |name|
+    class_eval "def self.#{name}(*args, &block) @@proxy_object.send(:#{name}, *args, &block); end"
+  end
+  
 end
 
 if __FILE__ == $0 and require 'em/spec'
