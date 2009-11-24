@@ -15,7 +15,6 @@ class EventedMysql < EM::Connection
     @fd = mysql.socket
     @opts = opts
     @current = nil
-    @@queue ||= []
     @processing = false
     @connected = true
 
@@ -32,6 +31,10 @@ class EventedMysql < EM::Connection
     'MySQL server has gone away',
     'Lost connection to MySQL server during query'
   ] unless defined? DisconnectErrors
+
+  def queue
+    opts[:em_mysql].queue
+  end
 
   def notify_readable
     log 'readable'
@@ -73,11 +76,11 @@ class EventedMysql < EM::Connection
   rescue Mysql::Error => e
     log 'mysql error', e.message
     if e.message =~ /Deadlock/
-      @@queue << [response, sql, cblk, eblk]
+      queue << [response, sql, cblk, eblk]
       @processing = false
       next_query
     elsif DisconnectErrors.include? e.message
-      @@queue << [response, sql, cblk, eblk]
+      queue << [response, sql, cblk, eblk]
       return close
     elsif cb = (eblk || @opts[:on_error])
       cb.call(e)
@@ -140,13 +143,13 @@ class EventedMysql < EM::Connection
         log 'mysql sending', sql
         @mysql.send_query(sql)
       else
-        @@queue << [response, sql, cblk, eblk]
+        queue << [response, sql, cblk, eblk]
         return
       end
     rescue Mysql::Error => e
       log 'mysql error', e.message
       if DisconnectErrors.include? e.message
-        @@queue << [response, sql, cblk, eblk]
+        queue << [response, sql, cblk, eblk]
         return close
       else
         raise e
@@ -166,7 +169,7 @@ class EventedMysql < EM::Connection
   private
 
   def next_query
-    if @connected and !@processing and pending = @@queue.shift
+    if @connected and !@processing and pending = queue.shift
       response, sql, cblk, eblk = pending
       execute(sql, response, cblk, eblk)
     end
@@ -176,6 +179,7 @@ class EventedMysql < EM::Connection
     return unless @opts[:logging]
     p [Time.now, @fd, (@signature[-4..-1] if @signature), *args]
   end
+  
 
   public
 
@@ -248,22 +252,28 @@ class EventedMysql < EM::Connection
   end
 end
 
-class EmMysql
+class EmMysql  
   def initialize(settings = {})
-    @settings = settings
+    @queue = []
+    @settings = { :connections => 4, :logging => false, :em_mysql => self }.merge settings
+  end
+  
+  def queue
+    @queue
   end
   
   def settings
-    @settings ||= { :connections => 4, :logging => false }
+    @settings 
   end
 
   def execute query, type = nil, cblk = nil, eblk = nil, &blk
     unless nil#connection = connection_pool.find{|c| not c.processing and c.connected }
       @n ||= 0
+
       connection = connection_pool[@n]
       @n = 0 if (@n+=1) >= connection_pool.size
     end
-
+    
     connection.execute(query, type, cblk, eblk, &blk)
   end
 

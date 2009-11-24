@@ -50,6 +50,7 @@ raise 'need Sequel >= 3.2.0' unless Sequel::MAJOR == 3 and Sequel::MINOR >= 2
 
 module Sequel
   class Dataset
+    STOCK_COUNT_OPTS = {:select => ["COUNT(*)".lit], :order => nil} unless defined? STOCK_COUNT_OPTS
     def em_mysq
       EventedMysql.databases[db] || EventedMysql
     end
